@@ -15,7 +15,7 @@ import {
   type VehicleModel,
 } from "@/features/insurance/insuranceSlice";
 import { BRANDS_2W, BRANDS_4W, MODELS_2W, MODELS_4W } from "@/utils/vehicleData";
-import { useCalculatePremiumMutation } from "@/services/policyApi";
+import { FALLBACK_PREMIUM, useCalculatePremiumMutation } from "@/services/policyApi";
 import { useStrings } from "@/i18n/strings";
 
 export const Route = createFileRoute("/insurance/$type")({
