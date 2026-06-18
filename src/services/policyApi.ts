@@ -26,22 +26,20 @@ export const policyApi = createApi({
         method: "POST",
         body,
       }),
-      // Fallback to deterministic mock if backend unreachable (LAN-only API in spec).
-      transformErrorResponse: () => ({
-        status: "FALLBACK",
-        data: {
-          premiumdetails: {
-            totalodpremium: "11450",
-            totalactpremium: "3747",
-            totalpremium: "15197",
-            finalpremium: "17933",
-            servicetax: "2736",
-            totaliev: "581295",
-          },
-        } satisfies CalculatePremiumResponse,
-      }),
     }),
   }),
 });
+
+// Deterministic fallback used when the LAN-only API is unreachable from a public preview.
+export const FALLBACK_PREMIUM: CalculatePremiumResponse = {
+  premiumdetails: {
+    totalodpremium: "11450",
+    totalactpremium: "3747",
+    totalpremium: "15197",
+    finalpremium: "17933",
+    servicetax: "2736",
+    totaliev: "581295",
+  },
+};
 
 export const { useCalculatePremiumMutation } = policyApi;
