@@ -1,7 +1,7 @@
 import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Search, CheckCircle2, Loader2, RotateCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, Search, CheckCircle2, RotateCw } from "lucide-react";
 
 import { TopBar } from "@/components/TopBar";
 import { Stepper } from "@/components/Stepper";
@@ -470,6 +470,3 @@ function fmt(n: string | number) {
   if (Number.isNaN(num)) return String(n);
   return num.toLocaleString("en-IN");
 }
-
-// Loader is needed to keep TS happy with unused imports
-void Loader2;
