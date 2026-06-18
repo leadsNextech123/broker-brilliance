@@ -283,12 +283,11 @@ function Pill({ children, active }: { children: React.ReactNode; active?: boolea
 function Step3() {
   const dispatch = useAppDispatch();
   const insurance = useAppSelector((s) => s.insurance);
-  const t = useStrings(useAppSelector((s) => s.language.selectedLanguages));
   const [calc, { isLoading, isError, data, reset }] = useCalculatePremiumMutation();
 
   const vehicle = insurance.selectedVehicle as VehicleModel;
 
-  useEffect(() => {
+  const run = () => {
     if (!vehicle || !insurance.selectedVehicleType) return;
     calc({
       vehicle_type: insurance.selectedVehicleType,
@@ -298,14 +297,21 @@ function Step3() {
       variant: vehicle.variant,
       vehicle_code: vehicle.vehicleCode,
     });
+  };
+
+  useEffect(() => {
+    run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // RTK Query falls back via transformErrorResponse — read from data, else from error payload.
-  const premium = data?.premiumdetails;
+  // Use API data when available, otherwise fall back (the spec API is LAN-only).
+  const premium =
+    data?.premiumdetails ?? (isError ? FALLBACK_PREMIUM.premiumdetails : undefined);
+
   useEffect(() => {
     if (premium) dispatch(setPremium(premium));
   }, [premium, dispatch]);
+
 
   return (
     <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1fr_1.4fr]">
@@ -330,26 +336,20 @@ function Step3() {
       {/* Premium dashboard */}
       <div className="glass rounded-3xl p-6 sm:p-8">
         {isLoading && <PremiumSkeleton />}
-        {!isLoading && isError && !premium && (
+        {!isLoading && premium && <PremiumResult />}
+        {!isLoading && !premium && (
           <ErrorState
             onRetry={() => {
               reset();
-              calc({
-                vehicle_type: insurance.selectedVehicleType ?? "4W",
-                coverage_type: "Comprehensive",
-                brand: insurance.selectedBrand ?? undefined,
-                model: vehicle?.model,
-                variant: vehicle?.variant,
-                vehicle_code: vehicle?.vehicleCode,
-              });
+              run();
             }}
           />
         )}
-        {premium && <PremiumResult />}
       </div>
     </div>
   );
 }
+
 
 function Field({ label, value }: { label: string; value?: string }) {
   return (
