@@ -7,23 +7,30 @@ import { TopBar } from "@/components/TopBar";
 import { Stepper } from "@/components/Stepper";
 import { CountUp } from "@/components/CountUp";
 import { useAppDispatch, useAppSelector } from "@/store";
+
 import {
   setBrand,
   setVehicle,
   setVehicleType,
   setPremium,
+  setApiBrands,
+  setApiModels,
   type VehicleModel,
 } from "@/features/insurance/insuranceSlice";
-import { BRANDS_2W, BRANDS_4W, MODELS_2W, MODELS_4W } from "@/utils/vehicleData";
+
 import { FALLBACK_PREMIUM, useCalculatePremiumMutation } from "@/services/policyApi";
+import { useGetVehiclesFromMakeQuery, useGetVehicleMakesQuery} from "@/services/vehicleAPI";
 import { useStrings } from "@/i18n/strings";
 
 export const Route = createFileRoute("/insurance/$type")({
   parseParams: ({ type }) => {
     const lower = type.toLowerCase();
-    if (lower !== "4w" && lower !== "2w") throw notFound();
+    if (lower !== "4w" && lower !== "2w"  && lower !== "6w") throw notFound();
     return { type: lower as "4w" | "2w" };
   },
+  validateSearch: (search: Record<string, unknown>) => ({
+    product_code: search.product_code as string | number | undefined,
+  }),
   head: ({ params }) => ({
     meta: [
       {
@@ -43,6 +50,8 @@ export const Route = createFileRoute("/insurance/$type")({
 
 function InsuranceFlow() {
   const { type } = Route.useParams();
+  const { product_code } = Route.useSearch();
+
   const vt = type.toUpperCase() as "4W" | "2W";
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
@@ -54,6 +63,27 @@ function InsuranceFlow() {
   useEffect(() => {
     dispatch(setVehicleType(vt));
   }, [vt, dispatch]);
+
+  // Step 1: fetch vehicle makes using product_code from search params
+  const { data: makesData, isLoading: makesLoading } = useGetVehicleMakesQuery(
+    { product_code: product_code! },
+    { skip: !product_code },
+  );
+
+  // Step 2: fetch models once a brand is selected
+  const { data: modelsData, isLoading: modelsLoading } = useGetVehiclesFromMakeQuery(
+    { product_code: product_code!, vehicle_make: insurance.selectedBrand! },
+    { skip: !product_code || !insurance.selectedBrand },
+  );
+
+  // Sync API responses into Redux
+  useEffect(() => {
+    if (makesData?.data) dispatch(setApiBrands(makesData.data));
+  }, [makesData, dispatch]);
+
+  useEffect(() => {
+    if (modelsData?.data) dispatch(setApiModels(modelsData.data));
+  }, [modelsData, dispatch]);
 
   useEffect(() => {
     if (step === 2 && !insurance.selectedBrand) setStep(1);
@@ -91,8 +121,8 @@ function InsuranceFlow() {
             transition={{ duration: 0.35 }}
             className="mt-10"
           >
-            {step === 1 && <Step1 vt={vt} onNext={() => setStep(2)} />}
-            {step === 2 && <Step2 vt={vt} onNext={() => setStep(3)} />}
+            {step === 1 && <Step1 vt={vt} isLoading={makesLoading} onNext={() => setStep(2)} />}
+            {step === 2 && <Step2 vt={vt} isLoading={modelsLoading} onNext={() => setStep(3)} />}
             {step === 3 && <Step3 />}
           </motion.div>
         </AnimatePresence>
@@ -103,10 +133,10 @@ function InsuranceFlow() {
 
 /* ---------------- Step 1 — Brand ---------------- */
 
-function Step1({ vt, onNext }: { vt: "4W" | "2W"; onNext: () => void }) {
-  const brands = vt === "4W" ? BRANDS_4W : BRANDS_2W;
+function Step1({ vt, isLoading, onNext }: { vt: "4W" | "2W"; isLoading: boolean; onNext: () => void }) {
   const dispatch = useAppDispatch();
   const selected = useAppSelector((s) => s.insurance.selectedBrand);
+  const brands = useAppSelector((s) => s.insurance.apiBrands);
   const t = useStrings(useAppSelector((s) => s.language.selectedLanguages));
   const [q, setQ] = useState("");
 
@@ -116,59 +146,85 @@ function Step1({ vt, onNext }: { vt: "4W" | "2W"; onNext: () => void }) {
   );
 
   return (
-    <div className="glass mx-auto max-w-5xl rounded-3xl p-6 sm:p-8">
-      <h2 className="font-display text-2xl font-bold sm:text-3xl">{t.selectBrand}</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Pick the manufacturer of your vehicle.
-      </p>
+    <div className="glass mx-auto max-w-3xl rounded-2xl p-4 sm:p-6 " >
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="font-display text-lg font-bold sm:text-xl">{t.selectBrand}</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Pick the manufacturer of your vehicle.
+          </p>
+        </div>
+        {selected && (
+          <span className="rounded-full bg-[var(--brand)]/10 px-2.5 py-1 text-xs font-medium text-[var(--brand)]">
+            {selected}
+          </span>
+        )}
+      </div>
 
-      <div className="relative mt-6">
-        <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      {/* Search */}
+      <div className="relative mt-4">
+        <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={t.searchBrand}
-          className="w-full rounded-2xl border border-[var(--border)] bg-[var(--background)]/60 py-3 pl-11 pr-4 text-sm outline-none ring-[var(--ring)] focus:ring-2"
+          className="w-full rounded-xl border border-[var(--border)] bg-[var(--background)]/60 py-2.5 pl-9 pr-3 text-sm outline-none ring-[var(--ring)] transition focus:ring-2"
         />
       </div>
 
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-        {filtered.map((b) => {
-          const active = selected === b;
-          return (
-            <motion.button
-              key={b}
-              whileHover={{ y: -3 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={() => dispatch(setBrand(b))}
-              className={`relative overflow-hidden rounded-2xl border p-5 text-left transition ${
-                active
-                  ? "border-transparent bg-gradient-to-br from-[var(--brand)] to-[var(--brand-glow)] text-[var(--primary-foreground)] shadow-elegant"
-                  : "border-[var(--border)] bg-[var(--card)] hover:border-[var(--brand)]/50"
-              }`}
-            >
-              <div className="text-xs uppercase tracking-wider opacity-70">Brand</div>
-              <div className="mt-1 line-clamp-2 font-display text-base font-semibold">{b}</div>
-              {active && (
-                <CheckCircle2 className="absolute right-3 top-3 h-5 w-5" strokeWidth={2.5} />
-              )}
-            </motion.button>
-          );
-        })}
-        {filtered.length === 0 && (
-          <div className="col-span-full py-10 text-center text-sm text-muted-foreground">
-            No brands match "{q}".
-          </div>
-        )}
-      </div>
+      {/* Grid */}
+      {isLoading ? (
+        <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <div key={i} className="h-14 animate-pulse rounded-xl bg-[var(--muted)]" />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-4 max-h-[380px] overflow-y-auto pr-1">
+        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-5">
+          {filtered.map((b) => {
+            const active = selected === b;
+            return (
+              <motion.button
+                key={b}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => dispatch(setBrand(b))}
+                className={`relative flex h-14 items-center justify-center rounded-xl border px-2 text-center transition ${
+                  active
+                    ? "border-transparent bg-[var(--brand)] text-[var(--primary-foreground)] shadow-sm"
+                    : "border-[var(--border)] bg-[var(--card)] hover:border-[var(--brand)]/50 hover:bg-[var(--brand)]/5"
+                }`}
+              >
+                <span className="line-clamp-2 font-display text-xs font-semibold leading-tight">
+                  {b}
+                </span>
+                {active && (
+                  <CheckCircle2
+                    className="absolute right-1 top-1 h-3.5 w-3.5"
+                    strokeWidth={2.5}
+                  />
+                )}
+              </motion.button>
+            );
+          })}
+          {filtered.length === 0 && !isLoading && (
+            <div className="col-span-full py-8 text-center text-xs text-muted-foreground">
+              No brands match "{q}".
+            </div>
+          )}
+        </div>
+        </div>
+      )}
 
-      <div className="mt-8 flex justify-end">
+      {/* Footer */}
+      <div className="mt-6 flex justify-end">
         <button
           disabled={!selected}
           onClick={onNext}
-          className="inline-flex items-center gap-2 rounded-full bg-[var(--brand)] px-6 py-3 text-sm font-semibold text-[var(--primary-foreground)] shadow-elegant transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40"
+          className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brand)] px-5 py-2.5 text-sm font-semibold text-[var(--primary-foreground)] shadow-sm transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40"
         >
-          Continue <ArrowRight className="h-4 w-4" />
+          Continue <ArrowRight className="h-3.5 w-3.5" />
         </button>
       </div>
     </div>
@@ -177,29 +233,46 @@ function Step1({ vt, onNext }: { vt: "4W" | "2W"; onNext: () => void }) {
 
 /* ---------------- Step 2 — Model ---------------- */
 
-function Step2({ vt, onNext }: { vt: "4W" | "2W"; onNext: () => void }) {
+function Step2({ vt, isLoading, onNext }: { vt: "4W" | "2W"; isLoading: boolean; onNext: () => void }) {
   const dispatch = useAppDispatch();
   const brand = useAppSelector((s) => s.insurance.selectedBrand);
   const selected = useAppSelector((s) => s.insurance.selectedVehicle);
+  const models = useAppSelector((s) => s.insurance.apiModels);
+  const selectedVehicle = useAppSelector((s) => s.insurance.selectedVehicle);
+
   const t = useStrings(useAppSelector((s) => s.language.selectedLanguages));
-  const models = (vt === "4W" ? MODELS_4W : MODELS_2W)[brand ?? ""] ?? [];
   const [q, setQ] = useState("");
 
   const filtered = useMemo(
     () =>
       models.filter((m) =>
-        `${m.model} ${m.variant} ${m.fuel}`.toLowerCase().includes(q.toLowerCase()),
+        `${m.vehiclemodel} ${m.vehiclesubtype} ${m.fuel}`
+          .toLowerCase()
+          .includes(q.toLowerCase()),
       ),
     [models, q],
   );
+
+  console.log(filtered)
+
+
+  const fuelLabel = (code: string) => {
+    const map: Record<string, string> = { P: "Petrol", D: "Diesel", E: "Electric", C: "CNG", H: "Hybrid" };
+    return map[code?.toUpperCase()] ?? code;
+  };
 
   return (
     <div className="glass mx-auto max-w-5xl rounded-3xl p-6 sm:p-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="font-display text-2xl font-bold sm:text-3xl">{t.selectModel}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Brand: {brand}</p>
+          <p className="mt-1 text-sm text-muted-foreground">Brand: <span className="font-semibold text-foreground">{brand}</span></p>
         </div>
+        {selected && (
+          <div className="text-xs text-[var(--brand)]">
+            1 selected
+          </div>
+        )}
       </div>
 
       <div className="relative mt-6">
@@ -207,49 +280,109 @@ function Step2({ vt, onNext }: { vt: "4W" | "2W"; onNext: () => void }) {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder={t.searchModel}
+          placeholder="Search model or variant…"
           className="w-full rounded-2xl border border-[var(--border)] bg-[var(--background)]/60 py-3 pl-11 pr-4 text-sm outline-none ring-[var(--ring)] focus:ring-2"
         />
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.map((m) => {
-          const active = selected?.id === m.id;
-          return (
-            <motion.button
-              key={m.id}
-              whileHover={{ y: -3 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => dispatch(setVehicle(m))}
-              className={`relative overflow-hidden rounded-2xl border p-5 text-left transition ${
-                active
-                  ? "border-transparent bg-gradient-to-br from-[var(--brand)] to-[var(--brand-glow)] text-[var(--primary-foreground)] shadow-elegant"
-                  : "border-[var(--border)] bg-[var(--card)] hover:border-[var(--brand)]/50"
-              }`}
-            >
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="font-display text-lg font-bold leading-tight">{m.model}</div>
-                  <div className="mt-0.5 text-xs uppercase tracking-wider opacity-80">
-                    {m.variant}
+      {isLoading ? (
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-36 animate-pulse rounded-2xl bg-[var(--muted)]" />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-6 max-h-[420px] overflow-y-auto pr-1">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {filtered.map((m) => {
+            const active = selected?.vehicleCode === m.vehiclecode;
+            console.log(m,"m")
+            return (
+              <motion.button
+                key={m.vehiclecode}
+                whileHover={{ y: -2 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() =>
+                  dispatch(
+                    setVehicle({
+                      id: m.vehiclecode,
+                      model: m.vehiclemodel,
+                      variant: m.vehiclesubtype,
+                      fuel: fuelLabel(m.fuel),
+                      cubicCapacity: m.cubiccapacity,
+                      carryingCapacity: m.carryingcapacity,
+                      vehicleCode: m.vehiclecode,
+                      vehicleMake:m.vehiclemake,
+                      vehicleMakeCode:m.vehiclemakecode,
+                      vehicleModel:m.vehiclemodel,
+                      vehicleModelCode:m.vehiclemodelcode,
+                      vehiclesubtype:m.vehiclesubtype,
+                      vehicleSubtypeCode:m.vehiclesubtypecode,
+                      vehicleType:m.vehicletype,
+                      registration_no:m.registration_no,
+                      registrationDate:m.registration_date,
+                      registrationLocation:m.registration_location,
+
+
+                    }),
+                  )
+                }
+                className={`relative overflow-hidden rounded-2xl border p-4 text-left transition ${
+                  active
+                    ? "border-transparent bg-gradient-to-br from-[var(--brand)] to-[var(--brand-glow)] text-[var(--primary-foreground)] shadow-elegant"
+                    : "border-[var(--border)] bg-[var(--card)] hover:border-[var(--brand)]/50"
+                }`}
+              >
+                {/* Header row */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate font-display text-base font-bold leading-tight">
+                      {m.vehiclemodel}
+                    </div>
+                    <div className={`mt-0.5 truncate text-xs ${active ? "opacity-80" : "text-muted-foreground"}`}>
+                      {m.vehiclesubtype}
+                    </div>
+                  </div>
+                  {active && <CheckCircle2 className="h-5 w-5 shrink-0" strokeWidth={2.5} />}
+                </div>
+
+                {/* Stats row */}
+                <div className={`mt-3 grid grid-cols-3 divide-x text-center text-xs ${active ? "divide-white/20" : "divide-[var(--border)]"}`}>
+                  <div className="pr-2">
+                    <div className={`font-semibold ${active ? "" : "text-foreground"}`}>
+                      {fuelLabel(m.fuel)}
+                    </div>
+                    <div className={`mt-0.5 ${active ? "opacity-70" : "text-muted-foreground"}`}>Fuel</div>
+                  </div>
+                  <div className="px-2">
+                    <div className={`font-semibold ${active ? "" : "text-foreground"}`}>
+                      {m.cubiccapacity} cc
+                    </div>
+                    <div className={`mt-0.5 ${active ? "opacity-70" : "text-muted-foreground"}`}>Engine</div>
+                  </div>
+                  <div className="pl-2">
+                    <div className={`font-semibold ${active ? "" : "text-foreground"}`}>
+                      {m.carryingcapacity}
+                    </div>
+                    <div className={`mt-0.5 ${active ? "opacity-70" : "text-muted-foreground"}`}>Seats</div>
                   </div>
                 </div>
-                {active && <CheckCircle2 className="h-5 w-5" strokeWidth={2.5} />}
-              </div>
-              <div className="mt-4 flex flex-wrap gap-1.5">
-                <Pill active={active}>{m.fuel}</Pill>
-                <Pill active={active}>{m.cubicCapacity}</Pill>
-                <Pill active={active}>{m.carryingCapacity}</Pill>
-              </div>
-            </motion.button>
-          );
-        })}
-        {filtered.length === 0 && (
-          <div className="col-span-full py-10 text-center text-sm text-muted-foreground">
-            No models found.
-          </div>
-        )}
-      </div>
+
+                {/* Footer */}
+                <div className={`mt-3 text-[10px] uppercase tracking-wider ${active ? "opacity-60" : "text-muted-foreground"}`}>
+                  Code: {m.vehiclecode}
+                </div>
+              </motion.button>
+            );
+          })}
+          {filtered.length === 0 && (
+            <div className="col-span-full py-10 text-center text-sm text-muted-foreground">
+              No models found.
+            </div>
+          )}
+        </div>
+        </div>
+      )}
 
       <div className="mt-8 flex justify-end">
         <button

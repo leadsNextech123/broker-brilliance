@@ -30,7 +30,6 @@ export const policyApi = createApi({
   }),
 });
 
-// Deterministic fallback used when the LAN-only API is unreachable from a public preview.
 export const FALLBACK_PREMIUM: CalculatePremiumResponse = {
   premiumdetails: {
     totalodpremium: "11450",

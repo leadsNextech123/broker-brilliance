@@ -1,10 +1,11 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { Car, Bike, ArrowRight, ShieldCheck, Zap, Clock } from "lucide-react";
+import { Car, ArrowRight, ShieldCheck, Zap, Clock } from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { setVehicleType, type VehicleType } from "@/features/insurance/insuranceSlice";
 import { useStrings } from "@/i18n/strings";
+import { useFetchProductsQuery } from "@/services/productApi";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -25,22 +26,36 @@ export const Route = createFileRoute("/")({
   component: Landing,
 });
 
+
+
 function Landing() {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
+  const { data: result } = useFetchProductsQuery();
+
+  console.log(result?.data);
+
   const langs = useAppSelector((s) => s.language.selectedLanguages);
   const t = useStrings(langs);
 
-  const go = (type: VehicleType) => {
+  const go = (type: VehicleType, product_code: string | number) => {
     dispatch(setVehicleType(type));
-    navigate({ to: "/insurance/$type", params: { type: type.toLowerCase() } });
+    navigate({
+      to: "/insurance/$type",
+      params: {
+        type: type.toLowerCase() as "4w" | "2w",
+      },
+      search: {
+        product_code,
+      },
+    });
   };
 
   return (
     <div className="relative min-h-screen">
       <TopBar />
       <main className="mx-auto flex w-full max-w-7xl flex-col items-center px-6 pb-16 pt-6 sm:pt-12">
-        <motion.div
+        {/* <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
@@ -51,7 +66,7 @@ function Landing() {
             <span className="relative inline-flex h-2 w-2 rounded-full bg-[var(--brand)]" />
           </span>
           IRDAI Registered Broker • Instant Quotes
-        </motion.div>
+        </motion.div> */}
 
         <motion.h1
           initial={{ opacity: 0, y: 24 }}
@@ -87,7 +102,22 @@ function Landing() {
         </div>
 
         <div className="mt-14 grid w-full max-w-4xl grid-cols-1 gap-6 sm:grid-cols-2">
-          <VehicleCard
+          {
+            result?.data?.map((item) => {
+              return (
+                <VehicleCard
+                  key={item.product_code}
+                  type={item.vehicle_type}
+                  icon={<Car className="h-12 w-12" />}
+                  subtitle={item.coverage_type}
+                  cta={t.getQuote}
+                  onClick={() => go(item.vehicle_type, item.product_code)}
+                  delay={0.35}
+                />
+              )
+            })
+          }
+          {/* <VehicleCard
             type="4W"
             icon={<Car className="h-12 w-12" />}
             title={t.fourWheeler}
@@ -106,7 +136,7 @@ function Landing() {
             cta={t.getQuote}
             onClick={() => go("2W")}
             delay={0.5}
-          />
+          /> */}
         </div>
       </main>
     </div>
@@ -116,15 +146,13 @@ function Landing() {
 interface CardProps {
   type: VehicleType;
   icon: React.ReactNode;
-  title: string;
   subtitle: string;
-  emoji: string;
   cta: string;
   onClick: () => void;
   delay: number;
 }
 
-function VehicleCard({ type, icon, title, subtitle, emoji, cta, onClick, delay }: CardProps) {
+function VehicleCard({ type, icon, cta, onClick, delay }: CardProps) {
   return (
     <motion.button
       initial={{ opacity: 0, y: 30 }}
@@ -142,17 +170,14 @@ function VehicleCard({ type, icon, title, subtitle, emoji, cta, onClick, delay }
         <div className="grid h-16 w-16 place-items-center rounded-2xl bg-gradient-to-br from-[var(--brand)] to-[var(--brand-glow)] text-[var(--primary-foreground)] shadow-elegant">
           {icon}
         </div>
-        <span className="text-4xl" aria-hidden>
-          {emoji}
-        </span>
       </div>
 
       <div className="relative mt-8">
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--brand)]">
           {type === "4W" ? "Four Wheeler" : "Two Wheeler"}
         </div>
-        <h3 className="mt-2 font-display text-2xl font-bold">{title}</h3>
-        <div className="mt-1 text-sm text-muted-foreground">{subtitle}</div>
+        {/* <h3 className="mt-2 font-display text-2xl font-bold">{title}</h3> */}
+        {/* <div className="mt-1 text-sm text-muted-foreground">{subtitle}</div> */}
       </div>
 
       <div className="relative mt-8 flex items-center justify-between">

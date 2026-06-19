@@ -130,7 +130,7 @@ function RootComponent() {
   return (
     <ReduxProvider>
       <QueryClientProvider client={queryClient}>
-        <AnimatedBackground />
+        {/* <AnimatedBackground /> */}
         {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
         <Outlet />
       </QueryClientProvider>

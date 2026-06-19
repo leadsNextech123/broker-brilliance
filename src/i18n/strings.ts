@@ -3,7 +3,7 @@ import type { LanguageCode } from "@/features/language/languageSlice";
 export const STRINGS = {
   en: {
     name: "English",
-    heroTitle: "Find the Best Motor Insurance in Minutes",
+    heroTitle: "Find the Right Insurance Policy in Minutes",
     heroSub: "Compare plans, calculate premiums and buy insurance instantly.",
     fourWheeler: "Four Wheeler Insurance",
     twoWheeler: "Two Wheeler Insurance",
@@ -21,7 +21,7 @@ export const STRINGS = {
   },
   hi: {
     name: "हिंदी",
-    heroTitle: "मिनटों में पाएं सबसे अच्छा मोटर बीमा",
+    heroTitle: "मिनटों में सही बीमा पॉलिसी चुनें",
     heroSub: "प्लान तुलना करें, प्रीमियम गणना करें और तुरंत बीमा खरीदें।",
     fourWheeler: "फोर व्हीलर बीमा",
     twoWheeler: "टू व्हीलर बीमा",

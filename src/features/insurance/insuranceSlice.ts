@@ -22,12 +22,28 @@ export interface PremiumDetails {
   totaliev: string;
 }
 
+export interface VehicleFromMakeItem {
+  vehiclecode: string;
+  vehicletype: string;
+  vehiclemakecode: string;
+  vehiclemake: string;
+  vehiclemodelcode: string;
+  vehiclemodel: string;
+  vehiclesubtypecode: string;
+  vehiclesubtype: string;
+  fuel: string;
+  cubiccapacity: string;
+  carryingcapacity: string;
+}
+
 interface InsuranceState {
   selectedVehicleType: VehicleType | null;
   coverageType: CoverageType;
   selectedBrand: string | null;
   selectedVehicle: VehicleModel | null;
   premiumResponse: PremiumDetails | null;
+  apiBrands: string[];
+  apiModels: VehicleFromMakeItem[];
   loading: boolean;
   error: string | null;
 }
@@ -38,6 +54,8 @@ const initialState: InsuranceState = {
   selectedBrand: null,
   selectedVehicle: null,
   premiumResponse: null,
+  apiBrands: [],
+  apiModels: [],
   loading: false,
   error: null,
 };
@@ -58,6 +76,7 @@ const insuranceSlice = createSlice({
       if (state.selectedBrand !== action.payload) {
         state.selectedVehicle = null;
         state.premiumResponse = null;
+        state.apiModels = [];
       }
       state.selectedBrand = action.payload;
     },
@@ -75,10 +94,18 @@ const insuranceSlice = createSlice({
     setError(state, action: PayloadAction<string | null>) {
       state.error = action.payload;
     },
+    setApiBrands(state, action: PayloadAction<string[]>) {
+      state.apiBrands = action.payload;
+    },
+    setApiModels(state, action: PayloadAction<VehicleFromMakeItem[]>) {
+      state.apiModels = action.payload;
+    },
     resetFlow(state) {
       state.selectedBrand = null;
       state.selectedVehicle = null;
       state.premiumResponse = null;
+      state.apiBrands = [];
+      state.apiModels = [];
       state.error = null;
     },
   },
@@ -91,6 +118,8 @@ export const {
   setPremium,
   setLoading,
   setError,
+  setApiBrands,
+  setApiModels,
   resetFlow,
 } = insuranceSlice.actions;
 
