@@ -11,14 +11,47 @@ export interface VehicleModel {
   cubicCapacity: string;
   carryingCapacity: string;
   vehicleCode: string;
+  // extra fields from API
+  vehicleMake: string;
+  vehicleMakeCode: string;
+  vehicleModelCode: string;
+  vehicleSubtype: string;
+  vehicleSubtypeCode: string;
+  vehicleType: string;
+}
+
+export interface UserDetails {
+  registrationNo: string;
+  registrationDate: string;
+  registrationLocation: string;
+  yearOfManufacture: string;
+  contactNumber: string;
+  city: string;
+}
+
+export interface PremiumSummaryItem {
+  paramdesc: string;
+  paramref: string;
+  paramtype: string;
+  od: string;
+  act: string;
+  net: string;
 }
 
 export interface PremiumDetails {
+  ncbamt: string;
+  addloadprem: string;
   totalodpremium: string;
   totalactpremium: string;
+  totalnetpremium: string;
   totalpremium: string;
+  netpremium: string;
   finalpremium: string;
+  spdisc: string;
   servicetax: string;
+  stampduty: string;
+  collpremium: string;
+  imtout: string;
   totaliev: string;
 }
 
@@ -41,7 +74,10 @@ interface InsuranceState {
   coverageType: CoverageType;
   selectedBrand: string | null;
   selectedVehicle: VehicleModel | null;
+  userDetails: UserDetails | null;
   premiumResponse: PremiumDetails | null;
+  premiumSummary: PremiumSummaryItem[];
+  transactionId: string | null;
   apiBrands: string[];
   apiModels: VehicleFromMakeItem[];
   loading: boolean;
@@ -53,7 +89,10 @@ const initialState: InsuranceState = {
   coverageType: "Comprehensive",
   selectedBrand: null,
   selectedVehicle: null,
+  userDetails: null,
   premiumResponse: null,
+  premiumSummary: [],
+  transactionId: null,
   apiBrands: [],
   apiModels: [],
   loading: false,
@@ -69,6 +108,8 @@ const insuranceSlice = createSlice({
         state.selectedBrand = null;
         state.selectedVehicle = null;
         state.premiumResponse = null;
+        state.premiumSummary = [];
+        state.userDetails = null;
       }
       state.selectedVehicleType = action.payload;
     },
@@ -76,16 +117,28 @@ const insuranceSlice = createSlice({
       if (state.selectedBrand !== action.payload) {
         state.selectedVehicle = null;
         state.premiumResponse = null;
+        state.premiumSummary = [];
         state.apiModels = [];
+        state.userDetails = null;
       }
       state.selectedBrand = action.payload;
     },
     setVehicle(state, action: PayloadAction<VehicleModel>) {
       state.selectedVehicle = action.payload;
       state.premiumResponse = null;
+      state.premiumSummary = [];
+      state.userDetails = null;
     },
-    setPremium(state, action: PayloadAction<PremiumDetails>) {
-      state.premiumResponse = action.payload;
+    setUserDetails(state, action: PayloadAction<UserDetails>) {
+      state.userDetails = action.payload;
+    },
+    setPremium(
+      state,
+      action: PayloadAction<{ details: PremiumDetails; summary: PremiumSummaryItem[]; transactionId: string }>,
+    ) {
+      state.premiumResponse = action.payload.details;
+      state.premiumSummary = action.payload.summary;
+      state.transactionId = action.payload.transactionId;
       state.error = null;
     },
     setLoading(state, action: PayloadAction<boolean>) {
@@ -104,6 +157,9 @@ const insuranceSlice = createSlice({
       state.selectedBrand = null;
       state.selectedVehicle = null;
       state.premiumResponse = null;
+      state.premiumSummary = [];
+      state.userDetails = null;
+      state.transactionId = null;
       state.apiBrands = [];
       state.apiModels = [];
       state.error = null;
@@ -115,6 +171,7 @@ export const {
   setVehicleType,
   setBrand,
   setVehicle,
+  setUserDetails,
   setPremium,
   setLoading,
   setError,
