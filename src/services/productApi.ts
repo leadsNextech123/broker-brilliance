@@ -14,7 +14,7 @@ export interface ProductsResponse {
 export const productApi = createApi({
   reducerPath: "ProductApi",
   baseQuery: fetchBaseQuery({
-    baseUrl: "http://192.168.0.184:8888/api",
+    baseUrl: "http://192.168.0.183:8888/api",
   }),
   endpoints: (builder) => ({
     fetchProducts: builder.query<ProductsResponse, void>({

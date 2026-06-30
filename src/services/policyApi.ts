@@ -47,7 +47,7 @@ export interface CalculatePremiumResponse {
 export const policyApi = createApi({
   reducerPath: "policyApi",
   baseQuery: fetchBaseQuery({
-    baseUrl: "http://192.168.0.184:8888/api",
+    baseUrl: "http://192.168.0.183:8888/api",
   }),
   endpoints: (builder) => ({
     calculatePremium: builder.mutation<CalculatePremiumResponse, CalculatePremiumPayload>({
