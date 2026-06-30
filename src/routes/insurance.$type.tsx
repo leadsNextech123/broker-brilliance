@@ -17,15 +17,17 @@ import {
   setPremium,
   setUserDetails,
   setKycResponse,
+  setKycFormValues,
   setApiBrands,
   setApiModels,
   type VehicleModel,
   type UserDetails,
 } from "@/features/insurance/insuranceSlice";
 
-import { useCalculatePremiumMutation, useValidateKycMutation } from "@/services/policyApi";
+import { useCalculatePremiumMutation, useValidateKycMutation, useUploadKycDocumentMutation } from "@/services/policyApi";
 import { useGetVehiclesFromMakeQuery, useGetVehicleMakesQuery } from "@/services/vehicleAPI";
 import { useStrings } from "@/i18n/strings";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/insurance/$type")({
   parseParams: ({ type }) => {
@@ -95,7 +97,7 @@ function InsuranceFlow() {
     if (step === 3 && !insurance.selectedVehicle) setStep(insurance.selectedBrand ? 2 : 1);
   }, [step, insurance.selectedBrand, insurance.selectedVehicle]);
 
-  const labels = [t.selectBrand, t.selectModel, t.calcPremium, t.validateKyc];
+  const labels = [t.selectBrand, t.selectModel, t.calcPremium, t.validateKyc, t.uploadKycDoc];
 
   return (
     <div className="relative min-h-screen pb-32">
@@ -129,7 +131,8 @@ function InsuranceFlow() {
             {step === 1 && <Step1 vt={vt} isLoading={makesLoading} onNext={() => setStep(2)} />}
             {step === 2 && <Step2 vt={vt} isLoading={modelsLoading} onNext={() => setStep(3)} />}
             {step === 3 && <Step3 onNext={() => setStep(4)} />}
-            {step === 4 && <Step4 productCode={String(product_code ?? "")} />}
+            {step === 4 && <Step4 productCode={String(product_code ?? "")} onNext={() => setStep(5)} />}
+            {step === 5 && <Step5 productCode={String(product_code ?? "")} />}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -227,7 +230,10 @@ function Step1({ vt, isLoading, onNext }: { vt: "4W" | "2W"; isLoading: boolean;
       <div className="mt-6 flex justify-end">
         <button
           disabled={!selected}
-          onClick={onNext}
+          onClick={() => {
+            toast.success(`Brand selected: ${selected}`, { description: "Proceed to choose your model." });
+            onNext();
+          }}
           className="inline-flex items-center gap-1.5 rounded-full bg-[var(--brand)] px-5 py-2.5 text-sm font-semibold text-[var(--primary-foreground)] shadow-sm transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40"
         >
           Continue <ArrowRight className="h-3.5 w-3.5" />
@@ -387,7 +393,10 @@ function Step2({ vt, isLoading, onNext }: { vt: "4W" | "2W"; isLoading: boolean;
       <div className="mt-8 flex justify-end">
         <button
           disabled={!selected}
-          onClick={onNext}
+          onClick={() => {
+            toast.success(`Vehicle selected: ${selected?.model}`, { description: selected?.vehicleSubtype ?? undefined });
+            onNext();
+          }}
           className="inline-flex items-center gap-2 rounded-full bg-[var(--brand)] px-6 py-3 text-sm font-semibold text-[var(--primary-foreground)] shadow-elegant transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t.calcPremium} <ArrowRight className="h-4 w-4" />
@@ -428,12 +437,12 @@ function Step3({ onNext }: { onNext: () => void }) {
     `${String(d.getDate()).padStart(2, "0")}-${d.toLocaleString("en-US", { month: "short" })}-${d.getFullYear()}`;
 
   const [form, setForm] = useState({
-    registrationNo: "",
-    registrationDate: "",
-    registrationLocation: "",
-    city: "",
-    yearOfManufacture: String(new Date().getFullYear()),
-    contactNumber: "",
+    registrationNo: "MH14SU7769",
+    registrationDate: "01-Mar-2026",
+    registrationLocation: "MUMBAI",
+    city: "MUMBAI",
+    yearOfManufacture: "2026",
+    contactNumber: "8130222583",
   });
   
   const [errors, setErrors] = useState<Partial<typeof form>>({});
@@ -500,6 +509,9 @@ function Step3({ onNext }: { onNext: () => void }) {
         summary: data.data.premiumsummerylist,
         transactionId: data.data.transactionid,
       }));
+      toast.success("Premium calculated successfully!", {
+        description: `Final premium: ₹${parseInt(data.data.premiumdetails.finalpremium, 10).toLocaleString("en-IN")}`,
+      });
     }
   }, [data, dispatch]);
 
@@ -682,7 +694,7 @@ function parseDDMMMYYYY(s: string): Date | undefined {
   return new Date(Number(yyyy), months[mmm], Number(dd));
 }
 
-function Step4({ productCode }: { productCode: string }) {
+function Step4({ productCode, onNext }: { productCode: string; onNext: () => void }) {
   const dispatch = useAppDispatch();
   const transactionId = useAppSelector((s) => s.insurance.transactionId);
 
@@ -701,6 +713,17 @@ function Step4({ productCode }: { productCode: string }) {
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
   const [submitValidateKyc, { isLoading, data, isError, error, reset }] = useValidateKycMutation();
+
+  // Show toast on API error
+  useEffect(() => {
+    if (isError) {
+      toast.error("KYC validation failed", {
+        description:
+          (error as { data?: { message?: string } })?.data?.message ??
+          "An unexpected error occurred. Please try again.",
+      });
+    }
+  }, [isError, error]);
 
   console.log(data)
 
@@ -727,16 +750,28 @@ function Step4({ productCode }: { productCode: string }) {
       customer_type: form.customerType,
       insurance_type: form.insuranceType,
     };
+    // Save values for Step 5 to consume
+    dispatch(setKycFormValues({
+      dob: form.dobStr,
+      location_code: "9906",
+      customer_type: form.customerType,
+      product_code: productCode,
+      transaction_id: transactionId!,
+    }));
     submitValidateKyc(payload);
   };
 
   useEffect(() => {
-    if (data?.data) {
+    if (data?.success) {
       dispatch(setKycResponse({
         success: data.success,
         message: data.message,
         data: data.data,
       }));
+      toast.success("KYC validated successfully!", {
+        description: data.message || "Your CKYC verification is complete.",
+      });
+      onNext();
     }
   }, [data, dispatch]);
 
@@ -953,6 +988,290 @@ function Step4({ productCode }: { productCode: string }) {
   );
 }
 
+/* ---------------- Step 5 — Upload KYC Document ---------------- */
+
+const UPLOAD_DOC_TYPES = [
+  { label: "UID (Aadhaar)", value: "E" },
+  { label: "Passport", value: "A" },
+  { label: "Voter ID", value: "B" },
+  { label: "Driving License", value: "D" },
+  { label: "NREGA Job Card", value: "F" },
+] as const;
+
+function Step5({ productCode }: { productCode: string }) {
+  const dispatch = useAppDispatch();
+  const kycFormValues = useAppSelector((s) => s.insurance.kycFormValues);
+
+  // Read-only values sourced from the previous (Step 4 / Validate KYC) API
+  const transactionId = kycFormValues?.transaction_id ?? useAppSelector((s) => s.insurance.transactionId) ?? "";
+  const dob           = kycFormValues?.dob            ?? "";
+  const locationCode  = kycFormValues?.location_code  ?? "9906";
+  const customerType  = kycFormValues?.customer_type  ?? "I";
+  const effectiveProd = kycFormValues?.product_code   ?? productCode;
+
+  const [form, setForm] = useState({
+    docTypeCategory: "E",   // UID (Aadhaar) default
+    docNumber: "2123",
+  });
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [uploadKycDocument, { isLoading, data, isError, error, reset }] = useUploadKycDocumentMutation();
+
+  // Toast on API error
+  useEffect(() => {
+    if (isError) {
+      toast.error("Upload failed", {
+        description:
+          (error as { data?: { message?: string } })?.data?.message ??
+          "Could not upload the document. Please try again.",
+      });
+    }
+  }, [isError, error]);
+
+  // Toast on success
+  useEffect(() => {
+    if (data?.success) {
+      toast.success("KYC document uploaded successfully!", {
+        description: data.message || "Your document has been submitted.",
+      });
+    }
+  }, [data]);
+
+  const validate = (): boolean => {
+    const e: Record<string, string> = {};
+    if (!form.docNumber.trim())  e.docNumber = "Document Number is required";
+    if (!docFile)                e.docFile   = "Please select a PDF file to upload";
+    if (!transactionId)          e.transactionId = "Transaction ID is not available — complete Validate KYC first";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] ?? null;
+    if (file && file.type !== "application/pdf") {
+      setErrors((prev) => ({ ...prev, docFile: "Only PDF files are allowed" }));
+      e.target.value = "";
+      return;
+    }
+    setDocFile(file);
+    setErrors((prev) => ({ ...prev, docFile: "" }));
+  };
+
+  const handleSubmit = () => {
+    if (!validate()) return;
+
+    const fd = new FormData();
+    fd.append("doc_type_category", form.docTypeCategory);
+    fd.append("doc_number",        form.docNumber.trim());
+    fd.append("transaction_id",    transactionId);
+    fd.append("dob",               dob);
+    fd.append("product_code",      effectiveProd);
+    fd.append("location_code",     locationCode);
+    fd.append("customer_type",     customerType);
+    fd.append("doc",               docFile!);
+
+    uploadKycDocument(fd);
+  };
+
+  const inputClass = (hasError?: boolean) =>
+    `w-full rounded-xl border bg-[var(--background)]/60 px-3 py-2.5 text-sm outline-none ring-[var(--ring)] transition focus:ring-2 ${hasError ? "border-destructive" : "border-[var(--border)]"}`;
+
+  const readOnlyClass =
+    "w-full rounded-xl border border-[var(--border)] bg-[var(--muted)]/60 px-3 py-2.5 text-sm text-muted-foreground cursor-not-allowed select-none";
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <div className="glass rounded-3xl p-6 sm:p-8">
+
+        {/* Header */}
+        <div className="mb-6 flex items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[var(--brand)]/10">
+            <FileText className="h-5 w-5 text-[var(--brand)]" />
+          </div>
+          <div>
+            <h2 className="font-display text-xl font-bold">Upload KYC Document</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">Submit your identity document as a PDF.</p>
+          </div>
+        </div>
+
+        {/* Missing prerequisite warning */}
+        {!transactionId && (
+          <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+            Transaction ID is not available. Please complete the Validate KYC step first.
+          </div>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+
+          {/* Document Type */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Document Type <span className="text-destructive">*</span>
+            </label>
+            <select
+              value={form.docTypeCategory}
+              onChange={(e) => setForm((f) => ({ ...f, docTypeCategory: e.target.value }))}
+              className={inputClass(!!errors.docTypeCategory)}
+            >
+              {UPLOAD_DOC_TYPES.map((d) => (
+                <option key={d.value} value={d.value}>{d.label}</option>
+              ))}
+            </select>
+            {errors.docTypeCategory && <p className="mt-1 text-[11px] text-destructive">{errors.docTypeCategory}</p>}
+          </div>
+
+          {/* Document Number */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Document Number <span className="text-destructive">*</span>
+            </label>
+            <input
+              value={form.docNumber}
+              onChange={(e) => setForm((f) => ({ ...f, docNumber: e.target.value }))}
+              placeholder="e.g. 2123"
+              className={inputClass(!!errors.docNumber)}
+            />
+            {errors.docNumber && <p className="mt-1 text-[11px] text-destructive">{errors.docNumber}</p>}
+          </div>
+
+          {/* Transaction ID — read only */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Transaction ID
+              <span className="ml-1.5 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">Auto</span>
+            </label>
+            <div className={readOnlyClass}>
+              {transactionId || <span className="italic opacity-60">Awaiting Validate KYC…</span>}
+            </div>
+            {errors.transactionId && <p className="mt-1 text-[11px] text-destructive">{errors.transactionId}</p>}
+          </div>
+
+          {/* Date of Birth — read only */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Date of Birth
+              <span className="ml-1.5 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">Auto</span>
+            </label>
+            <div className={readOnlyClass}>
+              {dob || <span className="italic opacity-60">Awaiting Validate KYC…</span>}
+            </div>
+          </div>
+
+          {/* Product Code — read only */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Product Code
+              <span className="ml-1.5 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">Auto</span>
+            </label>
+            <div className={readOnlyClass}>
+              {effectiveProd || <span className="italic opacity-60">Not available</span>}
+            </div>
+          </div>
+
+          {/* Location Code — read only */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Location Code
+              <span className="ml-1.5 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">Auto</span>
+            </label>
+            <div className={readOnlyClass}>{locationCode}</div>
+          </div>
+
+          {/* Customer Type — read only */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Customer Type
+              <span className="ml-1.5 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">Auto</span>
+            </label>
+            <div className={readOnlyClass}>
+              {customerType === "I" ? "Individual" : customerType === "O" ? "Organization" : customerType}
+            </div>
+          </div>
+
+          {/* Document Upload — full width */}
+          <div className="sm:col-span-2">
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Document (PDF) <span className="text-destructive">*</span>
+            </label>
+            <label
+              className={`flex w-full cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 transition hover:bg-[var(--brand)]/5 ${
+                errors.docFile ? "border-destructive" : "border-[var(--border)] hover:border-[var(--brand)]/50"
+              } ${docFile ? "bg-[var(--brand)]/5 border-[var(--brand)]/40" : ""}`}
+            >
+              <input
+                type="file"
+                accept="application/pdf"
+                className="sr-only"
+                onChange={handleFileChange}
+              />
+              {docFile ? (
+                <>
+                  <FileText className="h-8 w-8 text-[var(--brand)]" />
+                  <div className="text-center">
+                    <div className="text-sm font-medium text-foreground">{docFile.name}</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {(docFile.size / 1024).toFixed(1)} KB · PDF
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.preventDefault(); setDocFile(null); }}
+                    className="mt-1 text-xs text-destructive underline underline-offset-2"
+                  >
+                    Remove
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="grid h-10 w-10 place-items-center rounded-xl bg-[var(--muted)]">
+                    <ArrowRight className="h-5 w-5 rotate-[-90deg] text-muted-foreground" />
+                  </div>
+                  <div className="text-center">
+                    <div className="text-sm font-medium">Click to upload PDF</div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">PDF files only</div>
+                  </div>
+                </>
+              )}
+            </label>
+            {errors.docFile && <p className="mt-1 text-[11px] text-destructive">{errors.docFile}</p>}
+          </div>
+
+        </div>
+
+        {/* Submit */}
+        <div className="mt-8 flex justify-end">
+          <button
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="inline-flex items-center gap-2 rounded-full bg-[var(--brand)] px-6 py-3 text-sm font-semibold text-[var(--primary-foreground)] shadow-elegant transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isLoading ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Uploading…</>
+            ) : (
+              <>Upload Document <ArrowRight className="h-4 w-4" /></>
+            )}
+          </button>
+        </div>
+
+        {/* API Error */}
+        {isError && (
+          <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <div className="font-medium">Upload failed</div>
+            <div className="mt-0.5 text-xs opacity-80">
+              {(error as { data?: { message?: string } })?.data?.message ?? "An unexpected error occurred. Please try again."}
+            </div>
+            <button onClick={reset} className="mt-2 text-xs underline underline-offset-2">Dismiss</button>
+          </div>
+        )}
+
+        {/* Success */}
+      
+
+      </div>
+    </div>
+  );
+}
+
 /* ---------------- Shared UI pieces ---------------- */
 
 function FormField({ label, placeholder, value, error, onChange }: { label: string; placeholder: string; value: string; error?: string; onChange: (v: string) => void }) {
@@ -1024,15 +1343,19 @@ function BuyStickyCTA({ amount, onProceedKyc }: { amount: number; onProceedKyc: 
           <div className="font-display text-xl font-bold">₹{amount.toLocaleString("en-IN")}</div>
         </div>
         <div className="flex items-center gap-2">
-          <button
+          {/* <button
             onClick={onProceedKyc}
             className="inline-flex items-center gap-2 rounded-full border border-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-[var(--brand)] transition hover:bg-[var(--brand)]/10"
           >
             Validate KYC <ShieldCheck className="h-4 w-4" />
-          </button>
-          <button className="relative inline-flex items-center gap-2 rounded-full bg-[var(--brand)] px-6 py-3 text-sm font-semibold text-[var(--primary-foreground)] shadow-elegant animate-pulse-ring">
+          </button> */}
+
+           <button onClick={onProceedKyc} className="inline-flex items-center gap-2 rounded-full bg-[var(--brand)] px-6 py-3 text-sm font-semibold text-[var(--primary-foreground)] shadow-elegant transition hover:scale-[1.02]">
+ Validate KYC  <ArrowRight className="h-4 w-4" />
+            </button>
+          {/* <button className="relative inline-flex items-center gap-2 rounded-full bg-[var(--brand)] px-6 py-3 text-sm font-semibold text-[var(--primary-foreground)] shadow-elegant animate-pulse-ring">
             Buy Policy Now <ArrowRight className="h-4 w-4" />
-          </button>
+          </button> */}
         </div>
       </div>
     </div>

@@ -63,6 +63,13 @@ export interface ValidateKycResponse {
   timestamp: string;
 }
 
+export interface UploadKycDocumentResponse {
+  success: boolean;
+  message: string;
+  data: Record<string, unknown>;
+  timestamp: string;
+}
+
 export const policyApi = createApi({
   reducerPath: "policyApi",
   baseQuery: fetchBaseQuery({
@@ -83,7 +90,20 @@ export const policyApi = createApi({
         body,
       }),
     }),
+    uploadKycDocument: builder.mutation<UploadKycDocumentResponse, FormData>({
+      query: (formData) => ({
+        url: "/policy/upload-kyc-document",
+        method: "POST",
+        body: formData,
+        // Do NOT set Content-Type — browser sets it automatically with multipart boundary
+        formData: true,
+      }),
+    }),
   }),
 });
 
-export const { useCalculatePremiumMutation, useValidateKycMutation } = policyApi;
+export const {
+  useCalculatePremiumMutation,
+  useValidateKycMutation,
+  useUploadKycDocumentMutation,
+} = policyApi;
