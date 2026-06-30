@@ -1,6 +1,19 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { motion } from "framer-motion";
-import { Car, Bike, ArrowRight, ShieldCheck, Zap, Clock, Star } from "lucide-react";
+import {
+  Car,
+  Bike,
+  ArrowRight,
+  ShieldCheck,
+  Zap,
+  Clock,
+  Star,
+  FileSearch,
+  SlidersHorizontal,
+  BadgeCheck,
+  PhoneCall,
+  Quote,
+} from "lucide-react";
 import { TopBar } from "@/components/TopBar";
 import { useAppDispatch, useAppSelector } from "@/store";
 import { setVehicleType, type VehicleType } from "@/features/insurance/insuranceSlice";
@@ -52,8 +65,7 @@ function Landing() {
       <TopBar />
 
       {/* HERO */}
-      <main className="relative overflow-hidden">
-        {/* soft brand wash behind hero only */}
+      <section className="relative overflow-hidden">
         <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[640px] bg-gradient-to-b from-[#EFE9FF] via-[#F6F3FF] to-transparent" />
         <div className="pointer-events-none absolute -right-32 top-10 -z-10 h-96 w-96 rounded-full bg-[#6C47FF]/10 blur-3xl" />
         <div className="pointer-events-none absolute -left-24 top-64 -z-10 h-72 w-72 rounded-full bg-[#B6FF3C]/20 blur-3xl" />
@@ -133,7 +145,172 @@ function Landing() {
             No spam calls. No paperwork. Just your policy, instantly.
           </p>
         </div>
-      </main>
+      </section>
+
+      {/* TRUST STRIP */}
+      <section className="border-y border-[#1A1A2E]/5 bg-white py-8">
+        <div className="mx-auto grid w-full max-w-6xl grid-cols-2 gap-6 px-6 sm:grid-cols-4">
+          {[
+            { value: "2M+", label: "Policies issued" },
+            { value: "₹500Cr+", label: "Claims settled" },
+            { value: "98%", label: "Claim settlement ratio" },
+            { value: "4.7/5", label: "Average rating" },
+          ].map((stat) => (
+            <div key={stat.label} className="text-center">
+              <div className="text-2xl font-extrabold text-[#1A1A2E] sm:text-3xl">
+                {stat.value}
+              </div>
+              <div className="mt-1 text-xs text-[#8A8A9A] sm:text-sm">{stat.label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* HOW IT WORKS */}
+      <section className="mx-auto w-full max-w-6xl px-6 py-20">
+        <div className="mx-auto max-w-xl text-center">
+          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#6C47FF]">
+            How it works
+          </span>
+          <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-[#1A1A2E] sm:text-4xl">
+            Insurance, sorted in three steps
+          </h2>
+        </div>
+
+        <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-3">
+          {[
+            {
+              icon: <FileSearch className="h-6 w-6" />,
+              title: "Share your details",
+              desc: "Tell us about your vehicle. Takes under a minute, no documents needed upfront.",
+            },
+            {
+              icon: <SlidersHorizontal className="h-6 w-6" />,
+              title: "Compare real quotes",
+              desc: "See live prices from 25+ insurers side by side and pick what fits your budget.",
+            },
+            {
+              icon: <BadgeCheck className="h-6 w-6" />,
+              title: "Get covered instantly",
+              desc: "Pay securely and your policy lands in your inbox in minutes, not days.",
+            },
+          ].map((step, i) => (
+            <motion.div
+              key={step.title}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: "-60px" }}
+              transition={{ duration: 0.5, delay: i * 0.1 }}
+              className="relative rounded-3xl bg-white p-7 ring-1 ring-[#1A1A2E]/5"
+            >
+              <div className="grid h-12 w-12 place-items-center rounded-xl bg-[#F4F1FF] text-[#6C47FF]">
+                {step.icon}
+              </div>
+              <h3 className="mt-5 text-lg font-bold text-[#1A1A2E]">{step.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-[#5B5B6B]">{step.desc}</p>
+              <span className="absolute right-6 top-6 text-3xl font-extrabold text-[#1A1A2E]/5">
+                0{i + 1}
+              </span>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* WHY US */}
+      <section className="bg-[#1A1A2E] py-20">
+        <div className="mx-auto w-full max-w-6xl px-6">
+          <div className="mx-auto max-w-xl text-center">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#B6FF3C]">
+              Why people switch to us
+            </span>
+            <h2 className="mt-3 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+              Built to actually pay out
+            </h2>
+          </div>
+
+          <div className="mt-12 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              {
+                icon: <Zap className="h-5 w-5" />,
+                title: "Zero paperwork claims",
+                desc: "Raise and track claims entirely from your phone.",
+              },
+              {
+                icon: <ShieldCheck className="h-5 w-5" />,
+                title: "No-questions cashless garages",
+                desc: "8,000+ network garages across India.",
+              },
+              {
+                icon: <Clock className="h-5 w-5" />,
+                title: "24/7 roadside assistance",
+                desc: "Help reaches you, day or night, anywhere.",
+              },
+              {
+                icon: <PhoneCall className="h-5 w-5" />,
+                title: "Real humans on call",
+                desc: "No bots. Talk to a claims expert directly.",
+              },
+            ].map((f) => (
+              <div
+                key={f.title}
+                className="rounded-2xl bg-white/[0.04] p-6 ring-1 ring-white/10"
+              >
+                <div className="grid h-10 w-10 place-items-center rounded-lg bg-[#B6FF3C]/15 text-[#B6FF3C]">
+                  {f.icon}
+                </div>
+                <h3 className="mt-4 text-sm font-bold text-white">{f.title}</h3>
+                <p className="mt-1.5 text-sm leading-relaxed text-white/60">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* TESTIMONIAL */}
+      <section className="mx-auto w-full max-w-4xl px-6 py-20">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+          className="relative rounded-3xl bg-white p-10 text-center shadow-[0_2px_24px_rgba(20,20,43,0.06)] ring-1 ring-[#1A1A2E]/5"
+        >
+          <Quote className="mx-auto h-8 w-8 text-[#6C47FF]/30" />
+          <p className="mt-5 text-lg font-medium leading-relaxed text-[#1A1A2E] sm:text-xl">
+            My bike was stolen and I had the claim amount in my account within four days.
+            No back-and-forth, no runaround.
+          </p>
+          <div className="mt-5 flex items-center justify-center gap-1">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Star key={i} className="h-4 w-4 fill-[#FFB800] text-[#FFB800]" />
+            ))}
+          </div>
+          <div className="mt-3 text-sm font-semibold text-[#1A1A2E]">Rohit Sharma</div>
+          <div className="text-xs text-[#8A8A9A]">Two wheeler policy holder, Pune</div>
+        </motion.div>
+      </section>
+
+      {/* CLOSING CTA */}
+      <section className="px-6 pb-24">
+        <div className="relative mx-auto w-full max-w-6xl overflow-hidden rounded-[32px] bg-[#6C47FF] px-8 py-14 text-center sm:px-16">
+          <div className="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-white/10 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-20 -left-10 h-56 w-56 rounded-full bg-[#B6FF3C]/20 blur-3xl" />
+          <h2 className="relative text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+            Get a quote before your chai gets cold
+          </h2>
+          <p className="relative mx-auto mt-3 max-w-md text-sm text-white/80 sm:text-base">
+            Takes under 2 minutes. No spam calls, ever.
+          </p>
+          <button
+            onClick={() =>
+              document.querySelector("section")?.scrollIntoView({ behavior: "smooth" })
+            }
+            className="relative mt-7 inline-flex items-center gap-2 rounded-full bg-white px-7 py-3 text-sm font-semibold text-[#1A1A2E] transition hover:gap-3"
+          >
+            Compare plans now <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
