@@ -25,7 +25,7 @@ export interface VehicleFromMakeResponse {
 export const vehicleMakeApi = createApi({
   reducerPath: "vehicleMakeApi",
   baseQuery: fetchBaseQuery({
-    baseUrl: "http://192.168.0.183:8888/api",
+    baseUrl: "http://43.205.144.104/api",
   }),
   endpoints: (builder) => ({
     getVehicleMakes: builder.query<VehicleMakeResponse, { product_code: string | number }>({

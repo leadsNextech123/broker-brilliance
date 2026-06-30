@@ -44,10 +44,29 @@ export interface CalculatePremiumResponse {
   timestamp: string;
 }
 
+export interface ValidateKycPayload {
+  doc_type_code: string;
+  doc_number: string;
+  transaction_id: string;
+  dob: string;
+  product_code: string;
+  sys_type: string;
+  location_code: string;
+  customer_type: string;
+  insurance_type: string;
+}
+
+export interface ValidateKycResponse {
+  success: boolean;
+  message: string;
+  data: Record<string, unknown>;
+  timestamp: string;
+}
+
 export const policyApi = createApi({
   reducerPath: "policyApi",
   baseQuery: fetchBaseQuery({
-    baseUrl: "http://192.168.0.183:8888/api",
+    baseUrl: "http://43.205.144.104/api",
   }),
   endpoints: (builder) => ({
     calculatePremium: builder.mutation<CalculatePremiumResponse, CalculatePremiumPayload>({
@@ -57,7 +76,14 @@ export const policyApi = createApi({
         body,
       }),
     }),
+    validateKyc: builder.mutation<ValidateKycResponse, ValidateKycPayload>({
+      query: (body) => ({
+        url: "/policy/validate-kyc-details",
+        method: "POST",
+        body,
+      }),
+    }),
   }),
 });
 
-export const { useCalculatePremiumMutation } = policyApi;
+export const { useCalculatePremiumMutation, useValidateKycMutation } = policyApi;

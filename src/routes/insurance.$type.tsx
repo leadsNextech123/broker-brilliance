@@ -1,12 +1,14 @@
 import { createFileRoute, notFound, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Search, CheckCircle2, RotateCw, FileText, TrendingDown } from "lucide-react";
+import { ArrowLeft, ArrowRight, Search, CheckCircle2, RotateCw, FileText, TrendingDown, CalendarIcon, ShieldCheck, Loader2 } from "lucide-react";
 
 import { TopBar } from "@/components/TopBar";
 import { Stepper } from "@/components/Stepper";
 import { CountUp } from "@/components/CountUp";
 import { useAppDispatch, useAppSelector } from "@/store";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 import {
   setBrand,
@@ -14,13 +16,14 @@ import {
   setVehicleType,
   setPremium,
   setUserDetails,
+  setKycResponse,
   setApiBrands,
   setApiModels,
   type VehicleModel,
   type UserDetails,
 } from "@/features/insurance/insuranceSlice";
 
-import { useCalculatePremiumMutation } from "@/services/policyApi";
+import { useCalculatePremiumMutation, useValidateKycMutation } from "@/services/policyApi";
 import { useGetVehiclesFromMakeQuery, useGetVehicleMakesQuery } from "@/services/vehicleAPI";
 import { useStrings } from "@/i18n/strings";
 
@@ -92,7 +95,7 @@ function InsuranceFlow() {
     if (step === 3 && !insurance.selectedVehicle) setStep(insurance.selectedBrand ? 2 : 1);
   }, [step, insurance.selectedBrand, insurance.selectedVehicle]);
 
-  const labels = [t.selectBrand, t.selectModel, t.calcPremium];
+  const labels = [t.selectBrand, t.selectModel, t.calcPremium, t.validateKyc];
 
   return (
     <div className="relative min-h-screen pb-32">
@@ -125,7 +128,8 @@ function InsuranceFlow() {
           >
             {step === 1 && <Step1 vt={vt} isLoading={makesLoading} onNext={() => setStep(2)} />}
             {step === 2 && <Step2 vt={vt} isLoading={modelsLoading} onNext={() => setStep(3)} />}
-            {step === 3 && <Step3 />}
+            {step === 3 && <Step3 onNext={() => setStep(4)} />}
+            {step === 4 && <Step4 productCode={String(product_code ?? "")} />}
           </motion.div>
         </AnimatePresence>
       </div>
@@ -409,7 +413,7 @@ function Pill({ children, active }: { children: React.ReactNode; active?: boolea
 
 /* ---------------- Step 3 — Details + Premium ---------------- */
 
-function Step3() {
+function Step3({ onNext }: { onNext: () => void }) {
   const dispatch = useAppDispatch();
   const insurance = useAppSelector((s) => s.insurance);
   const { product_code } = Route.useSearch();
@@ -632,7 +636,319 @@ function Step3() {
         </div>
       )}
 
-      <BuyStickyCTA amount={parseInt(premiumDetails.finalpremium, 10)} />
+      <BuyStickyCTA amount={parseInt(premiumDetails.finalpremium, 10)} onProceedKyc={onNext} />
+    </div>
+  );
+}
+
+/* ---------------- Step 4 — Validate KYC Details ---------------- */
+
+const DOC_TYPES = [
+  { label: "PAN", value: "C" },
+  { label: "Passport", value: "A" },
+  { label: "Voter ID", value: "B" },
+  { label: "Driving License", value: "D" },
+  { label: "Aadhaar", value: "E" },
+  { label: "NREGA Job Card", value: "F" },
+  { label: "GSTIN", value: "G" },
+  { label: "CKYC Number", value: "Z" },
+] as const;
+
+const CUSTOMER_TYPES = [
+  { label: "Individual", value: "I" },
+  { label: "Organization", value: "O" },
+] as const;
+
+const INSURANCE_TYPES = [
+  { label: "MOTOR", value: "MOTOR" },
+] as const;
+
+/** Format a Date to DD-MMM-YYYY, e.g. 08-Nov-2004 */
+function formatDDMMMYYYY(d: Date): string {
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mmm = d.toLocaleString("en-US", { month: "short" });
+  const yyyy = d.getFullYear();
+  return `${dd}-${mmm}-${yyyy}`;
+}
+
+/** Parse DD-MMM-YYYY back to a Date (returns undefined on failure) */
+function parseDDMMMYYYY(s: string): Date | undefined {
+  const months: Record<string, number> = {
+    Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+    Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+  };
+  const [dd, mmm, yyyy] = s.split("-");
+  if (!dd || !mmm || !yyyy || !(mmm in months)) return undefined;
+  return new Date(Number(yyyy), months[mmm], Number(dd));
+}
+
+function Step4({ productCode }: { productCode: string }) {
+  const dispatch = useAppDispatch();
+  const transactionId = useAppSelector((s) => s.insurance.transactionId);
+
+  const DEFAULT_DOB_STR = "08-Nov-2004";
+  const DEFAULT_DOB_DATE = parseDDMMMYYYY(DEFAULT_DOB_STR);
+
+  const [form, setForm] = useState({
+    docTypeCode: "C",          // PAN default
+    docNumber: "AFFPK4566H",
+    dobStr: DEFAULT_DOB_STR,
+    dobDate: DEFAULT_DOB_DATE as Date | undefined,
+    customerType: "I",
+    insuranceType: "MOTOR",
+  });
+
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
+  const [submitValidateKyc, { isLoading, data, isError, error, reset }] = useValidateKycMutation();
+
+  console.log(data)
+
+  const validate = (): boolean => {
+    const e: Record<string, string> = {};
+    if (!form.docNumber.trim()) e.docNumber = "Document Number is required";
+    if (!form.dobStr) e.dob = "Date of Birth is required";
+    if (!transactionId) e.transactionId = "Transaction ID is not available — please complete Calculate Premium first";
+    if (!productCode) e.productCode = "Product Code is not available";
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const handleSubmit = () => {
+    if (!validate()) return;
+    const payload = {
+      doc_type_code: form.docTypeCode,
+      doc_number: form.docNumber.trim(),
+      transaction_id: transactionId!,
+      dob: form.dobStr,
+      product_code: productCode,
+      sys_type: "OPUS",
+      location_code: "9906",
+      customer_type: form.customerType,
+      insurance_type: form.insuranceType,
+    };
+    submitValidateKyc(payload);
+  };
+
+  useEffect(() => {
+    if (data?.data) {
+      dispatch(setKycResponse({
+        success: data.success,
+        message: data.message,
+        data: data.data,
+      }));
+    }
+  }, [data, dispatch]);
+
+  const inputClass = (hasError?: boolean) =>
+    `w-full rounded-xl border bg-[var(--background)]/60 px-3 py-2.5 text-sm outline-none ring-[var(--ring)] transition focus:ring-2 ${hasError ? "border-destructive" : "border-[var(--border)]"}`;
+
+  const readOnlyClass =
+    "w-full rounded-xl border border-[var(--border)] bg-[var(--muted)]/60 px-3 py-2.5 text-sm text-muted-foreground cursor-not-allowed select-none";
+
+  return (
+    <div className="mx-auto max-w-2xl">
+      <div className="glass rounded-3xl p-6 sm:p-8">
+        {/* Header */}
+        <div className="mb-6 flex items-center gap-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[var(--brand)]/10">
+            <ShieldCheck className="h-5 w-5 text-[var(--brand)]" />
+          </div>
+          <div>
+            <h2 className="font-display text-xl font-bold">Validate KYC Details</h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">Submit CKYC verification request.</p>
+          </div>
+        </div>
+
+        {/* Missing prerequisite warning */}
+        {!transactionId && (
+          <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+            Transaction ID is not available. Please complete the Calculate Premium step first.
+          </div>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2">
+
+          {/* Document Type */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Document Type <span className="text-destructive">*</span>
+            </label>
+            <select
+              value={form.docTypeCode}
+              onChange={(e) => setForm((f) => ({ ...f, docTypeCode: e.target.value }))}
+              className={inputClass(!!errors.docTypeCode)}
+            >
+              {DOC_TYPES.map((d) => (
+                <option key={d.value} value={d.value}>{d.label}</option>
+              ))}
+            </select>
+            {errors.docTypeCode && <p className="mt-1 text-[11px] text-destructive">{errors.docTypeCode}</p>}
+          </div>
+
+          {/* Document Number */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Document Number <span className="text-destructive">*</span>
+            </label>
+            <input
+              value={form.docNumber}
+              onChange={(e) => setForm((f) => ({ ...f, docNumber: e.target.value }))}
+              placeholder="e.g. AFFPK4566H"
+              className={inputClass(!!errors.docNumber)}
+            />
+            {errors.docNumber && <p className="mt-1 text-[11px] text-destructive">{errors.docNumber}</p>}
+          </div>
+
+          {/* Date of Birth — Calendar Picker only */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Date of Birth <span className="text-destructive">*</span>
+            </label>
+            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={`flex w-full items-center justify-between rounded-xl border bg-[var(--background)]/60 px-3 py-2.5 text-sm transition hover:bg-[var(--background)]/80 ${errors.dob ? "border-destructive" : "border-[var(--border)]"}`}
+                >
+                  <span className={form.dobStr ? "text-foreground" : "text-muted-foreground"}>
+                    {form.dobStr || "Select date"}
+                  </span>
+                  <CalendarIcon className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-auto p-0" align="start">
+                <Calendar
+                  mode="single"
+                  selected={form.dobDate}
+                  onSelect={(date) => {
+                    if (!date) return;
+                    setForm((f) => ({
+                      ...f,
+                      dobDate: date,
+                      dobStr: formatDDMMMYYYY(date),
+                    }));
+                    setCalendarOpen(false);
+                    setErrors((e) => ({ ...e, dob: undefined }));
+                  }}
+                  captionLayout="dropdown"
+                  defaultMonth={form.dobDate ?? new Date(2004, 10, 8)}
+                  fromYear={1924}
+                  toYear={new Date().getFullYear()}
+                  disabled={(d) => d > new Date()}
+                />
+              </PopoverContent>
+            </Popover>
+            {errors.dob && <p className="mt-1 text-[11px] text-destructive">{errors.dob}</p>}
+          </div>
+
+          {/* Customer Type */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Customer Type <span className="text-destructive">*</span>
+            </label>
+            <select
+              value={form.customerType}
+              onChange={(e) => setForm((f) => ({ ...f, customerType: e.target.value }))}
+              className={inputClass(!!errors.customerType)}
+            >
+              {CUSTOMER_TYPES.map((c) => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Insurance Type */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Insurance Type <span className="text-destructive">*</span>
+            </label>
+            <select
+              value={form.insuranceType}
+              onChange={(e) => setForm((f) => ({ ...f, insuranceType: e.target.value }))}
+              className={inputClass()}
+            >
+              {INSURANCE_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Transaction ID — read only */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Transaction ID
+              {/* <span className="ml-1.5 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">Auto</span> */}
+            </label>
+            <div className={readOnlyClass}>
+              {transactionId ?? <span className="italic opacity-60">Awaiting Calculate Premium…</span>}
+            </div>
+            {errors.transactionId && <p className="mt-1 text-[11px] text-destructive">{errors.transactionId}</p>}
+          </div>
+
+          {/* Product Code — read only */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Product Code
+              {/* <span className="ml-1.5 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">Auto</span> */}
+            </label>
+            <div className={readOnlyClass}>
+              {productCode || <span className="italic opacity-60">Not available</span>}
+            </div>
+            {errors.productCode && <p className="mt-1 text-[11px] text-destructive">{errors.productCode}</p>}
+          </div>
+
+          {/* System Type — static read only */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              System Type
+              {/* <span className="ml-1.5 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">Static</span> */}
+            </label>
+            <div className={readOnlyClass}>OPUS</div>
+          </div>
+
+          {/* Location Code — static read only */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
+              Location Code
+              {/* <span className="ml-1.5 rounded-full bg-[var(--muted)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide">Static</span> */}
+            </label>
+            <div className={readOnlyClass}>9906</div>
+          </div>
+
+        </div>
+
+        {/* Submit */}
+        <div className="mt-8 flex justify-end">
+          <button
+            onClick={handleSubmit}
+            disabled={isLoading}
+            className="inline-flex items-center gap-2 rounded-full bg-[var(--brand)] px-6 py-3 text-sm font-semibold text-[var(--primary-foreground)] shadow-elegant transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isLoading ? (
+              <><Loader2 className="h-4 w-4 animate-spin" /> Validating…</>
+            ) : (
+              <>Validate KYC <ShieldCheck className="h-4 w-4" /></>
+            )}
+          </button>
+        </div>
+
+        {/* API Error */}
+        {isError && (
+          <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            <div className="font-medium">Validation failed</div>
+            <div className="mt-0.5 text-xs opacity-80">
+              {(error as { data?: { message?: string } })?.data?.message ?? "An unexpected error occurred. Please try again."}
+            </div>
+            <button onClick={reset} className="mt-2 text-xs underline underline-offset-2">Dismiss</button>
+          </div>
+        )}
+
+        {/* Success response */}
+   
+
+  
+      </div>
     </div>
   );
 }
@@ -699,7 +1015,7 @@ function MetricCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BuyStickyCTA({ amount }: { amount: number }) {
+function BuyStickyCTA({ amount, onProceedKyc }: { amount: number; onProceedKyc: () => void }) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-30 px-4 pb-5 pt-3 sm:px-6">
       <div className="glass-strong mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-2xl p-3 pl-5 shadow-elegant">
@@ -707,9 +1023,17 @@ function BuyStickyCTA({ amount }: { amount: number }) {
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Final Premium</div>
           <div className="font-display text-xl font-bold">₹{amount.toLocaleString("en-IN")}</div>
         </div>
-        <button className="relative inline-flex items-center gap-2 rounded-full bg-[var(--brand)] px-6 py-3 text-sm font-semibold text-[var(--primary-foreground)] shadow-elegant animate-pulse-ring">
-          Buy Policy Now <ArrowRight className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onProceedKyc}
+            className="inline-flex items-center gap-2 rounded-full border border-[var(--brand)] px-4 py-2.5 text-sm font-semibold text-[var(--brand)] transition hover:bg-[var(--brand)]/10"
+          >
+            Validate KYC <ShieldCheck className="h-4 w-4" />
+          </button>
+          <button className="relative inline-flex items-center gap-2 rounded-full bg-[var(--brand)] px-6 py-3 text-sm font-semibold text-[var(--primary-foreground)] shadow-elegant animate-pulse-ring">
+            Buy Policy Now <ArrowRight className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </div>
   );

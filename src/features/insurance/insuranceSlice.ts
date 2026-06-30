@@ -69,6 +69,12 @@ export interface VehicleFromMakeItem {
   carryingcapacity: string;
 }
 
+export interface KycResponse {
+  data: Record<string, unknown>;
+  message: string;
+  success: boolean;
+}
+
 interface InsuranceState {
   selectedVehicleType: VehicleType | null;
   coverageType: CoverageType;
@@ -82,6 +88,7 @@ interface InsuranceState {
   apiModels: VehicleFromMakeItem[];
   loading: boolean;
   error: string | null;
+  kycResponse: KycResponse | null;
 }
 
 const initialState: InsuranceState = {
@@ -97,6 +104,7 @@ const initialState: InsuranceState = {
   apiModels: [],
   loading: false,
   error: null,
+  kycResponse: null,
 };
 
 const insuranceSlice = createSlice({
@@ -147,6 +155,9 @@ const insuranceSlice = createSlice({
     setError(state, action: PayloadAction<string | null>) {
       state.error = action.payload;
     },
+    setKycResponse(state, action: PayloadAction<KycResponse | null>) {
+      state.kycResponse = action.payload;
+    },
     setApiBrands(state, action: PayloadAction<string[]>) {
       state.apiBrands = action.payload;
     },
@@ -163,6 +174,7 @@ const insuranceSlice = createSlice({
       state.apiBrands = [];
       state.apiModels = [];
       state.error = null;
+      state.kycResponse = null;
     },
   },
 });
@@ -175,6 +187,7 @@ export const {
   setPremium,
   setLoading,
   setError,
+  setKycResponse,
   setApiBrands,
   setApiModels,
   resetFlow,
